@@ -67,20 +67,22 @@ impl MockServer {
 
 #[tokio::test]
 async fn test_it_works() {
-    let server = MockServer::start("127.0.0.1:2000".parse().unwrap()).await;
+    let server = MockServer::start("127.0.0.5:2000".parse().unwrap()).await;
 
     tokio::spawn(tucdp::start(tucdp::Config::Clinet {
         incoming: "127.0.0.1:3234".parse().unwrap(),
-        tunnel_tcp: "127.0.0.1:2101".parse().unwrap(),
-        tunnel_udp_remote: "127.0.0.1:2101".parse().unwrap(),
+        tunnel_tcp: "127.0.0.5:2101".parse().unwrap(),
+        tunnel_udp_remote: "127.0.0.5:2101".parse().unwrap(),
         tunnel_udp_local: "127.0.0.1:2004".parse().unwrap(),
+        num_tcp_chans: 1,
+        num_udp_chans: 1,
     }));
 
     tokio::spawn(tucdp::start(tucdp::Config::Server {
-        incoming_tcp: "127.0.0.1:2101".parse().unwrap(),
-        incoming_udp: "127.0.0.1:2101".parse().unwrap(),
-        outgoing_remote: "127.0.0.1:2000".parse().unwrap(),
-        outgoing_local: "127.0.0.1:2003".parse().unwrap(),
+        incoming_tcp: "127.0.0.5:2101".parse().unwrap(),
+        incoming_udp: "127.0.0.5:2101".parse().unwrap(),
+        outgoing_remote: "127.0.0.5:2000".parse().unwrap(),
+        outgoing_local: "127.0.0.5:2003".parse().unwrap(),
     }));
 
     let client = MockClient::connect_to(
@@ -88,20 +90,35 @@ async fn test_it_works() {
         "127.0.0.1:3234".parse().unwrap(),
     )
     .await;
-
-    assert_eq!(client.messages.lock().unwrap().len(), 0);
-    assert_eq!(client.messages.lock().unwrap().len(), 0);
-    client.send("hello".as_bytes()).await;
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert_eq!(server.messages.lock().unwrap().len(), 1);
-    assert_eq!(
-        server.messages.lock().unwrap().get(0).unwrap(),
-        "hello".as_bytes()
-    );
 
-    assert_eq!(client.messages.lock().unwrap().len(), 1);
-    assert_eq!(
-        client.messages.lock().unwrap().get(0).unwrap(),
-        "olleh".as_bytes()
+    assert_eq!(client.messages.lock().unwrap().len(), 0);
+    assert_eq!(client.messages.lock().unwrap().len(), 0);
+    tokio::join!(
+        client.send("hello1".as_bytes()),
+        client.send("hello2".as_bytes()),
+        client.send("hello3".as_bytes()),
+        client.send("hello4".as_bytes()),
+        client.send("hello5".as_bytes()),
+        client.send("hello6".as_bytes()),
+        client.send("hello7".as_bytes()),
     );
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(server.messages.lock().unwrap().len(), 7);
+    server.messages.lock().unwrap().sort();
+    for i in 1..=7 {
+        assert_eq!(
+            std::str::from_utf8(server.messages.lock().unwrap().get(i - 1).unwrap()).unwrap(),
+            format!("hello{i}").as_str()
+        );
+    }
+
+    assert_eq!(client.messages.lock().unwrap().len(), 7);
+    client.messages.lock().unwrap().sort();
+    for i in 1..=7 {
+        assert_eq!(
+            std::str::from_utf8(client.messages.lock().unwrap().get(i - 1).unwrap()).unwrap(),
+            format!("{i}olleh").as_str()
+        );
+    }
 }

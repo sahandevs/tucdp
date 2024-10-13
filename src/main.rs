@@ -7,6 +7,8 @@ async fn main() -> Result<()> {
         tunnel_tcp: "127.0.0.1:2001".parse().unwrap(),
         tunnel_udp_remote: "127.0.0.1:2001".parse().unwrap(),
         tunnel_udp_local: "127.0.0.1:2002".parse().unwrap(),
+        num_tcp_chans: 1,
+        num_udp_chans: 0,
     })
     .await
 }
