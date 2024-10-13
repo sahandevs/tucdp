@@ -68,7 +68,7 @@ async fn start_server(
                     let size = read.read_u64().await.unwrap() as usize;
                     let mut buf = vec![0u8; size];
                     read.read_exact(&mut buf).await.unwrap();
-                    // println!("  [server] new message from {addr:?} {buf:?}");
+                    // // println!("  [server] new message from {addr:?} {buf:?}");
                     let _ = tx.send((id, buf)).await;
                 }
             });
@@ -126,16 +126,19 @@ async fn start_server(
         tokio::spawn(async move {
             let mut buf = [0u8; 65536];
             let mut next_id = 0u16;
-            let mut incoming_sock_connected = false;
+            let mut connected = false;
             loop {
                 let (n, sender) = outgoing_sock.recv_from(&mut buf).await.unwrap();
-                if !incoming_sock_connected {
+                if !connected {
                     outgoing_sock.connect(sender).await.unwrap();
-                    incoming_sock_connected = true;
+                    connected = true;
                 }
                 let data = &buf[..n];
+                // println!("  [server] rx {data:?}");
                 let _ = from_out_tx.send((next_id, data.to_vec()));
+                // println!("  [server] rx notify done");
                 next_id = next_id.wrapping_add(1);
+                // println!("[server]{}", next_id);
             }
         });
     }
@@ -156,7 +159,10 @@ async fn start_server(
                 if flags[id as usize].swap(true, std::sync::atomic::Ordering::SeqCst) {
                     continue; /* already sent */
                 }
+                // println!("  [server] tx {msg:?}");
                 let _ = outgoing_sock.send(msg.as_slice()).await;
+                // println!("  [server] tx notify done");
+
             }
         });
     }
@@ -172,7 +178,6 @@ async fn start_client(
     num_tcp_tuns: usize,
     num_udp_tuns: usize,
 ) -> Result<()> {
-    let mut incoming_sock_connected = false;
     let incoming_sock = Arc::new(tokio::net::UdpSocket::bind(incoming_addr).await?);
 
     let mut to_tun_chans: Vec<tokio::sync::mpsc::Sender<(u16, Vec<u8>)>> = vec![];
@@ -207,7 +212,7 @@ async fn start_client(
                     loop {
                         tokio::select! {
                             x = rx.recv() => {
-                                // println!("  [client] sending to tcp tun");
+                                // // println!("  [client] sending to tcp tun");
                                 let Some((id, data)) = x else { break 'inner };
                                 or_retry!(write.write_u16(id).await);
                                 or_retry!(write.write_u64(data.len() as _).await);
@@ -288,6 +293,7 @@ async fn start_client(
             }
         });
     }
+    let sender_addr = Arc::new(tokio::sync::Mutex::new(None));
 
     let flags = Arc::new({
         let mut x = vec![];
@@ -297,33 +303,46 @@ async fn start_client(
         assert_eq!(x.len(), u16::MAX as usize);
         x
     });
+
     while let Some(mut chan) = from_tun_chans.pop() {
         let flags = flags.clone();
         let incoming_sock = incoming_sock.clone();
+        let sender_addr = sender_addr.clone();
         tokio::spawn(async move {
             while let Some((id, msg)) = chan.recv().await {
                 if flags[id as usize].swap(true, std::sync::atomic::Ordering::SeqCst) {
                     continue; /* already sent */
                 }
-                let _ = incoming_sock.send(msg.as_slice()).await;
+                // println!("  [client] tx {msg:?}");
+                let sender_addr_lock = sender_addr.lock().await;
+                if let Some(sender) = *sender_addr_lock {
+                    let _ = incoming_sock.send_to(msg.as_slice(), sender).await;
+                } else {
+                    println!("No sender address known, cannot send data back");
+                }
+                // println!("  [client] tx notify done");
             }
         });
     }
 
-    // incoming recv
+    // Incoming receive loop
     let mut buf = [0u8; 65536];
     let mut next_id = 0u16;
     loop {
+        // println!("  [client] before recv");
         let (n, sender) = incoming_sock.recv_from(&mut buf).await.unwrap();
-        if !incoming_sock_connected {
-            incoming_sock.connect(sender).await?;
-            incoming_sock_connected = true;
+        {
+            let mut sender_addr_lock = sender_addr.lock().await;
+            *sender_addr_lock = Some(sender);
         }
         let data = &buf[..n];
-        // println!("  [client] new message from {sender:?} {data:?}");
+        // println!("  [client] rx {data:?}");
         for chan in to_tun_chans.iter() {
-            let _ = chan.send((next_id, data.to_vec())).await;
+            let chan = chan.clone();
+            let data = data.to_vec();
+            tokio::spawn(async move { chan.send((next_id, data)).await });
         }
+        // println!("  [client] sending done");
         next_id = next_id.wrapping_add(1);
     }
 }
