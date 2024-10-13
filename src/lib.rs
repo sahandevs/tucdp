@@ -377,11 +377,11 @@ pub enum Config {
         tunnel_udp_local: SocketAddr,
 
         /// Number of TCP channels
-        #[arg(long, default_value_t = 1)]
+        #[arg(long, default_value_t = 5)]
         num_tcp_chans: usize,
 
         /// Number of UDP channels
-        #[arg(long, default_value_t = 1)]
+        #[arg(long, default_value_t = 5)]
         num_udp_chans: usize,
     },
 
