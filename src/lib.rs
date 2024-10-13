@@ -9,7 +9,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub async fn start(cfg: Config) -> Result<()> {
     match cfg {
-        Config::Clinet {
+        Config::Client {
             incoming,
             tunnel_tcp,
             tunnel_udp_local,
@@ -162,7 +162,6 @@ async fn start_server(
                 // println!("  [server] tx {msg:?}");
                 let _ = outgoing_sock.send(msg.as_slice()).await;
                 // println!("  [server] tx notify done");
-
             }
         });
     }
@@ -347,20 +346,61 @@ async fn start_client(
     }
 }
 
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+pub struct Args {
+    /// Choose between 'client' and 'server' mode
+    #[command(subcommand)]
+    pub command: Config,
+}
+
+#[derive(Subcommand)]
 pub enum Config {
-    Clinet {
+    /// Run in client mode
+    Client {
+        /// Incoming address (client listens here)
+        #[arg(long)]
         incoming: SocketAddr,
+
+        /// TCP tunnel server address
+        #[arg(long)]
         tunnel_tcp: SocketAddr,
+
+        /// Remote UDP tunnel server address
+        #[arg(long)]
         tunnel_udp_remote: SocketAddr,
+
+        /// Local UDP address for the tunnel
+        #[arg(long)]
         tunnel_udp_local: SocketAddr,
 
-        num_udp_chans: usize,
+        /// Number of TCP channels
+        #[arg(long, default_value_t = 1)]
         num_tcp_chans: usize,
+
+        /// Number of UDP channels
+        #[arg(long, default_value_t = 1)]
+        num_udp_chans: usize,
     },
+
+    /// Run in server mode
     Server {
+        /// Incoming TCP address (server listens here)
+        #[arg(long)]
         incoming_tcp: SocketAddr,
+
+        /// Incoming UDP address (server listens here)
+        #[arg(long)]
         incoming_udp: SocketAddr,
+
+        /// Remote address to send outgoing UDP packets
+        #[arg(long)]
         outgoing_remote: SocketAddr,
+
+        /// Local address for outgoing UDP socket
+        #[arg(long)]
         outgoing_local: SocketAddr,
     },
 }

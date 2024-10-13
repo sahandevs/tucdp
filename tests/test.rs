@@ -69,7 +69,7 @@ impl MockServer {
 async fn test_it_works() {
     let server = MockServer::start("127.0.0.5:2000".parse().unwrap()).await;
 
-    tokio::spawn(tucdp::start(tucdp::Config::Clinet {
+    tokio::spawn(tucdp::start(tucdp::Config::Client {
         incoming: "127.0.0.1:3234".parse().unwrap(),
         tunnel_tcp: "127.0.0.5:2101".parse().unwrap(),
         tunnel_udp_remote: "127.0.0.5:2101".parse().unwrap(),
